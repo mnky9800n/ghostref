@@ -215,6 +215,7 @@ function findReferencesSection(text) {
         /\n\s*REFERENCES?\s*\n/i,
         /\n\s*Works?\s+Cited\s*\n/i,
         /\n\s*Literature\s+Cited\s*\n/i,
+        /\n\s*Cited\s+References?\s*\n/i,
     ];
     
     // Patterns that indicate END of references section
@@ -227,6 +228,7 @@ function findReferencesSection(text) {
         /\n\s*Author\s+contributions/i,
         /\n\s*Data\s+availability/i,
         /\n\s*Conflict\s+of\s+interest/i,
+        /\n\s*Extended\s+Data/i,
     ];
     
     let refsStart = -1;
@@ -239,9 +241,20 @@ function findReferencesSection(text) {
         }
     }
     
+    // If no header found, look for numbered refs pattern starting somewhere
     if (refsStart === -1) {
-        console.log('No references header found, using last 30%');
-        return text.substring(Math.floor(text.length * 0.7));
+        // Look for first occurrence of "1. Author" pattern (start of numbered refs)
+        const numberedStart = text.search(/\n\s*1\.\s+[A-Z][a-z]+/);
+        if (numberedStart !== -1 && numberedStart > text.length * 0.5) {
+            // Only use if it's in the back half of the document
+            refsStart = numberedStart;
+            console.log('Found numbered refs starting at:', numberedStart);
+        }
+    }
+    
+    if (refsStart === -1) {
+        console.log('No references header found, using last 40%');
+        return text.substring(Math.floor(text.length * 0.6));
     }
     
     // Get text from references start
@@ -249,7 +262,7 @@ function findReferencesSection(text) {
     
     // Try to find where references END
     for (const pattern of endPatterns) {
-        const endMatch = refsText.substring(100).search(pattern); // Skip first 100 chars (the "References" header)
+        const endMatch = refsText.substring(100).search(pattern);
         if (endMatch !== -1) {
             console.log('Found end of references at:', endMatch + 100);
             refsText = refsText.substring(0, endMatch + 100);
@@ -283,15 +296,16 @@ function parseCitations(text) {
         if (citations.length > 0) return citations;
     }
     
-    // Pattern 2: Numbered with dot: 1. 2. 3.
-    const dotMatches = text.match(/(?:^|\n)\s*\d+\.\s+[A-Z][^\n]+(?:\n(?!\s*\d+\.)[^\n]+)*/gm);
+    // Pattern 2: Numbered with dot: 1. 2. 3. or 123. (handles multi-digit)
+    // Match: newline/start, optional space, 1-3 digit number, dot, space, capital letter, then text
+    const dotMatches = text.match(/(?:^|\n)\s*(\d{1,3})\.\s+[A-Z][^\n]+(?:\n(?!\s*\d{1,3}\.)[^\n]+)*/gm);
     if (dotMatches && dotMatches.length > 2) {
         console.log('Using dot number pattern, found:', dotMatches.length);
         for (let i = 0; i < dotMatches.length; i++) {
             const raw = dotMatches[i];
-            const numMatch = raw.match(/(\d+)\./);
+            const numMatch = raw.match(/(\d{1,3})\./);
             const index = numMatch ? parseInt(numMatch[1]) : i + 1;
-            const citationText = raw.replace(/^\s*\d+\.\s*/, '').trim();
+            const citationText = raw.replace(/^\s*\d{1,3}\.\s*/, '').trim();
             const citation = cleanCitation(citationText);
             if (citation && looksLikeCitation(citation)) {
                 citations.push({ raw: citation, index: index });
@@ -300,7 +314,21 @@ function parseCitations(text) {
         if (citations.length > 0) return citations;
     }
     
-    // Pattern 3: Author-year style - look for author names followed by year
+    // Pattern 3: Nature/Science style - "Author et al. Title. Journal Volume, Pages (Year)."
+    // Look for "et al." or author initials followed by text and year in parens
+    const etAlMatches = text.match(/[A-Z][a-z]+(?:,?\s+[A-Z]\.?(?:\s*[A-Z]\.?)*|\s+et\s+al\.)[^(]{10,200}\(\d{4}\)/g);
+    if (etAlMatches && etAlMatches.length > 2) {
+        console.log('Using et al. pattern, found:', etAlMatches.length);
+        for (let i = 0; i < etAlMatches.length; i++) {
+            const citation = cleanCitation(etAlMatches[i]);
+            if (citation && looksLikeCitation(citation)) {
+                citations.push({ raw: citation, index: i + 1 });
+            }
+        }
+        if (citations.length > 0) return citations;
+    }
+    
+    // Pattern 4: Author-year style - look for author names followed by year
     const authorYearMatches = text.match(/[A-Z][a-z]+,?\s+[A-Z]\.?[^.]*\(\d{4}\)[^.]*\./g);
     if (authorYearMatches && authorYearMatches.length > 2) {
         console.log('Using author-year pattern, found:', authorYearMatches.length);
