@@ -290,29 +290,50 @@ function cleanCitation(text) {
 
 // Extract likely title from citation text
 function extractTitle(citationText) {
-    // Common patterns for titles in citations:
+    // Clean up the text first
+    let text = citationText.replace(/\s+/g, ' ').trim();
     
-    // Pattern 1: Text in quotes "Title here"
-    let match = citationText.match(/"([^"]{10,200})"/);
-    if (match) return match[1];
+    // Pattern 1: Text in quotes "Title here" or ''Title here''
+    let match = text.match(/["'']([^"'']{10,200})["'']/);
+    if (match) return match[1].trim();
     
-    // Pattern 2: Text in italics markers or after year: (2020). Title here.
-    match = citationText.match(/\(\d{4}\)\.\s*([^.]{10,200})\./);
-    if (match) return match[1];
+    // Pattern 2: After (Year). Title here. (APA style)
+    match = text.match(/\(\d{4}\)\.\s*([^.]{10,200})\./);
+    if (match) return match[1].trim();
     
-    // Pattern 3: After year with comma: (2020), Title here,
-    match = citationText.match(/\(\d{4}\),?\s*([^,]{10,200}),/);
-    if (match) return match[1];
+    // Pattern 3: Title before journal - look for pattern: Authors, Title, J. Something or Journal
+    // Format: "Name, I., Name, J., Title here, J. Comput. Phys."
+    match = text.match(/[A-Z]\.,\s*([A-Z][^,]{10,150}),\s*(?:J\.|[A-Z][a-z]+\s+[A-Z]|in:|Proc\.|Trans\.|Bull\.|Phys|SIAM|IEEE|Nature|Science)/);
+    if (match) return match[1].trim();
     
-    // Pattern 4: After authors (Name, I., Name, J.) Title here.
-    match = citationText.match(/(?:[A-Z][a-z]+,\s*[A-Z]\.?,?\s*(?:&|and)?\s*)+([A-Z][^.]{10,200})\./);
-    if (match) return match[1];
+    // Pattern 4: Title before year in parentheses - "Title here, Journal 123 (2020)"
+    match = text.match(/[A-Z]\.,\s*([A-Z][^,]{10,150}),\s*[A-Z][^(]+\(\d{4}\)/);
+    if (match) return match[1].trim();
     
-    // Fallback: take a chunk from the middle (skip author names at start)
-    const words = citationText.split(/\s+/);
-    if (words.length > 5) {
-        // Skip first few words (likely authors) and take next chunk
-        const titleWords = words.slice(3, 15).join(' ');
+    // Pattern 5: Look for capitalized phrase after author initials
+    match = text.match(/[A-Z]\.\s*,?\s*([A-Z][a-z]+(?:\s+[a-z]+){2,}(?:\s+[A-Za-z]+){0,10})/);
+    if (match && match[1].length > 15) return match[1].trim();
+    
+    // Pattern 6: After "in:" for conference papers
+    match = text.match(/,\s*in:\s*([^,]{10,100})/i);
+    if (match) return match[1].trim();
+    
+    // Fallback: grab middle chunk, skip first part (authors) and last part (journal/year)
+    const parts = text.split(/,\s*/);
+    if (parts.length >= 3) {
+        // Try the part that looks most like a title (longer, has spaces)
+        for (let i = 1; i < parts.length - 1; i++) {
+            const part = parts[i].trim();
+            if (part.length > 20 && part.includes(' ') && /^[A-Z]/.test(part)) {
+                return part;
+            }
+        }
+    }
+    
+    // Last resort: take words 3-15
+    const words = text.split(/\s+/);
+    if (words.length > 8) {
+        const titleWords = words.slice(3, 12).join(' ');
         if (titleWords.length > 15) return titleWords;
     }
     
