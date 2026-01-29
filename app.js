@@ -472,6 +472,11 @@ function showResults() {
     document.getElementById('stat-invalid').textContent = invalid;
     document.getElementById('stat-errors').textContent = errors;
     
+    // Default to showing invalid citations (the ones that need attention)
+    currentFilter = 'invalid';
+    filterBtns.forEach(b => b.classList.remove('active'));
+    document.querySelector('.filter-btn[data-filter="invalid"]').classList.add('active');
+    
     renderResults();
 }
 
