@@ -158,25 +158,33 @@ async function startVerification() {
             throw new Error('Could not extract text from PDF. It may be a scanned image.');
         }
         
-        // Step 2: Find references section
-        updateProgress('Finding references section...', 20);
-        const refsSection = findReferencesSection(text);
-        console.log('References section:', refsSection.substring(0, 500));
+        // Step 2: Extract ALL DOIs from entire document (format-agnostic approach)
+        updateProgress('Scanning for DOIs...', 30);
+        const dois = extractAllDOIs(text);
+        console.log('Found DOIs:', dois.length, dois.slice(0, 5));
         
-        // Step 3: Parse individual citations
-        updateProgress('Parsing citations...', 30);
-        const citations = parseCitations(refsSection);
-        console.log('Found citations:', citations.length);
-        
-        if (citations.length === 0) {
-            throw new Error('Could not parse citations from the references section.');
+        if (dois.length === 0) {
+            // Fallback to citation parsing if no DOIs found
+            updateProgress('No DOIs found, trying citation parsing...', 35);
+            const refsSection = findReferencesSection(text);
+            const citations = parseCitations(refsSection);
+            
+            if (citations.length === 0) {
+                throw new Error('No DOIs found and could not parse citations. The PDF may not contain verifiable references.');
+            }
+            
+            updateProgress(`Verifying ${citations.length} citations by title...`, 40);
+            const results = await verifyCitations(citations);
+            currentResults = results;
+            showResults();
+            return;
         }
         
-        // Step 4: Verify each citation against CrossRef
-        updateProgress(`Verifying ${citations.length} citations...`, 40);
-        const results = await verifyCitations(citations);
+        // Step 3: Verify each DOI directly against CrossRef
+        updateProgress(`Verifying ${dois.length} DOIs...`, 40);
+        const results = await verifyDOIs(dois);
         
-        // Step 5: Show results
+        // Step 4: Show results
         currentResults = results;
         showResults();
         
@@ -441,6 +449,62 @@ function extractDOI(text) {
         }
     }
     return null;
+}
+
+// Extract ALL DOIs from entire document (format-agnostic)
+function extractAllDOIs(text) {
+    const doiSet = new Set();
+    
+    // Comprehensive DOI pattern - find all 10.xxxx/yyyy patterns
+    const masterPattern = /\b(10\.\d{4,9}\/[^\s\]\)>,;'"]{3,})/gi;
+    
+    let match;
+    while ((match = masterPattern.exec(text)) !== null) {
+        let doi = match[1];
+        // Clean trailing punctuation
+        doi = doi.replace(/[.,;:\)\]}>'"]+$/, '');
+        // Validate
+        if (doi.length > 10 && doi.length < 100) {
+            doiSet.add(doi);
+        }
+    }
+    
+    // Also check for doi.org URLs
+    const urlPattern = /doi\.org\/(10\.\d{4,9}\/[^\s\]\)>,;'"]{3,})/gi;
+    while ((match = urlPattern.exec(text)) !== null) {
+        let doi = match[1].replace(/[.,;:\)\]}>'"]+$/, '');
+        if (doi.length > 10 && doi.length < 100) {
+            doiSet.add(doi);
+        }
+    }
+    
+    return Array.from(doiSet);
+}
+
+// Verify multiple DOIs against CrossRef
+async function verifyDOIs(dois) {
+    const results = [];
+    const total = dois.length;
+    
+    for (let i = 0; i < dois.length; i++) {
+        const doi = dois[i];
+        progressDetail.textContent = `Verifying: ${doi}`;
+        
+        const result = await verifyDOI(doi);
+        results.push({
+            index: i + 1,
+            raw: doi,
+            doi: doi,
+            ...result
+        });
+        
+        const progress = 40 + (55 * ((i + 1) / total));
+        updateProgress(`Verified ${i + 1}/${total} DOIs...`, progress);
+        
+        await sleep(150);
+    }
+    
+    return results;
 }
 
 // Verify single DOI directly against CrossRef
