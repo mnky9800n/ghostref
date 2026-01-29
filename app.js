@@ -558,7 +558,96 @@ async function verifyDOI(doi) {
     }
 }
 
-// Verify citations against CrossRef - DOI first, then title search
+// Extract bibliographic info for fallback search
+function extractBiblio(text) {
+    const biblio = {};
+    
+    // Extract author (first author surname)
+    const authorMatch = text.match(/^([A-Z][a-z]+)/);
+    if (authorMatch) biblio.author = authorMatch[1];
+    
+    // Extract year
+    const yearMatch = text.match(/\((\d{4})\)/);
+    if (yearMatch) biblio.year = yearMatch[1];
+    
+    // Extract journal abbreviation patterns
+    const journalPatterns = [
+        /\b(Nature|Science|Cell|PNAS|PLoS|Phys\.?\s*Rev|J\.?\s*Chem|Nat\.?\s*\w+)\b/i,
+        /\b([A-Z][a-z]+\.?\s+[A-Z][a-z]+\.?)\s+\d+/,  // "J. Chem. Phys. 123"
+    ];
+    for (const pattern of journalPatterns) {
+        const match = text.match(pattern);
+        if (match) {
+            biblio.journal = match[1];
+            break;
+        }
+    }
+    
+    // Extract volume/pages
+    const volMatch = text.match(/\b(\d{1,4}),\s*(\d+)/);
+    if (volMatch) {
+        biblio.volume = volMatch[1];
+        biblio.page = volMatch[2];
+    }
+    
+    return Object.keys(biblio).length >= 2 ? biblio : null;
+}
+
+// Search CrossRef by bibliographic query (fallback)
+async function searchCrossRefBiblio(biblio, rawCitation, index) {
+    try {
+        // Build query string
+        let query = '';
+        if (biblio.author) query += biblio.author + ' ';
+        if (biblio.journal) query += biblio.journal + ' ';
+        if (biblio.year) query += biblio.year + ' ';
+        if (biblio.volume) query += biblio.volume;
+        
+        const url = `${CROSSREF_API}?query.bibliographic=${encodeURIComponent(query.trim())}&rows=1&mailto=${MAILTO}`;
+        const response = await fetch(url);
+        
+        if (!response.ok) {
+            return { index, raw: rawCitation, valid: null, error: `HTTP ${response.status}` };
+        }
+        
+        const data = await response.json();
+        const items = data.message?.items || [];
+        
+        if (items.length === 0) {
+            return { index, raw: rawCitation, searchedBiblio: query, valid: false, error: 'No match found' };
+        }
+        
+        const work = items[0];
+        
+        // Check if year matches (basic validation)
+        const foundYear = work.published?.['date-parts']?.[0]?.[0] || work.created?.['date-parts']?.[0]?.[0];
+        if (biblio.year && foundYear && Math.abs(parseInt(biblio.year) - foundYear) > 1) {
+            return { index, raw: rawCitation, searchedBiblio: query, valid: false, error: 'Year mismatch' };
+        }
+        
+        const authors = work.author || [];
+        const authorStr = authors.length > 0 
+            ? authors.slice(0, 3).map(a => a.family || a.name || 'Unknown').join(', ') + (authors.length > 3 ? ' et al.' : '')
+            : 'Unknown';
+        
+        return {
+            index,
+            raw: rawCitation,
+            valid: true,
+            title: work.title?.[0] || 'Unknown',
+            authors: authorStr,
+            year: String(foundYear || 'Unknown'),
+            doi: work.DOI,
+            journal: work['container-title']?.[0] || work.publisher || 'Unknown',
+            method: 'biblio'
+        };
+        
+    } catch (error) {
+        return { index, raw: rawCitation, valid: null, error: error.message };
+    }
+}
+
+// Verify citations against CrossRef - DOI → Title → Bibliographic
 async function verifyCitations(citations) {
     const results = [];
     const total = citations.length;
@@ -567,7 +656,7 @@ async function verifyCitations(citations) {
         const citation = citations[i];
         let result;
         
-        // Try DOI first (most reliable)
+        // Method 1: Try DOI first (most reliable)
         const doi = extractDOI(citation.raw);
         if (doi) {
             progressDetail.textContent = `Verifying DOI: ${doi}`;
@@ -579,18 +668,34 @@ async function verifyCitations(citations) {
                 ...doiResult
             };
         } else {
-            // Fall back to title search
+            // Method 2: Try title search
             const title = extractTitle(citation.raw);
-            if (title) {
-                progressDetail.textContent = `Searching: "${title.substring(0, 50)}..."`;
+            if (title && title.length > 15) {
+                progressDetail.textContent = `Searching title: "${title.substring(0, 40)}..."`;
                 result = await searchCrossRef(title, citation.raw, citation.index);
                 result.method = 'title';
-            } else {
+            }
+            
+            // Method 3: If title failed or wasn't found, try bibliographic search
+            if (!result || result.valid === false) {
+                const biblio = extractBiblio(citation.raw);
+                if (biblio) {
+                    progressDetail.textContent = `Searching by author/journal/year...`;
+                    const biblioResult = await searchCrossRefBiblio(biblio, citation.raw, citation.index);
+                    // Use biblio result if it's better than title result
+                    if (!result || (biblioResult.valid === true && result.valid !== true)) {
+                        result = biblioResult;
+                    }
+                }
+            }
+            
+            // If still no result
+            if (!result) {
                 result = {
                     index: citation.index,
                     raw: citation.raw,
                     valid: null,
-                    error: 'Could not extract DOI or title from citation'
+                    error: 'Could not extract DOI, title, or bibliographic info'
                 };
             }
         }
