@@ -180,9 +180,39 @@ async function extractTextFromPDF(file) {
     return fullText;
 }
 
-// DOI Extraction
+// Find References Section
+function findReferencesSection(text) {
+    // Common section headers
+    const patterns = [
+        /\n\s*References?\s*\n/i,
+        /\n\s*Bibliography\s*\n/i,
+        /\n\s*REFERENCES?\s*\n/i,
+        /\n\s*Works?\s+Cited\s*\n/i,
+        /\n\s*Literature\s+Cited\s*\n/i,
+        /\n\s*Citations?\s*\n/i,
+    ];
+    
+    for (const pattern of patterns) {
+        const match = text.search(pattern);
+        if (match !== -1) {
+            console.log('Found references section at position:', match);
+            return text.substring(match);
+        }
+    }
+    
+    // Fallback: return last 30% of text (refs usually at end)
+    console.log('No references header found, using last 30% of text');
+    const cutoff = Math.floor(text.length * 0.7);
+    return text.substring(cutoff);
+}
+
+// DOI Extraction - only from References section
 function extractDOIs(text) {
-    const matches = text.match(DOI_PATTERN) || [];
+    // First, find the references section
+    const refsSection = findReferencesSection(text);
+    console.log('References section length:', refsSection.length);
+    
+    const matches = refsSection.match(DOI_PATTERN) || [];
     
     // Clean and deduplicate
     const cleaned = matches.map(doi => {
@@ -193,6 +223,7 @@ function extractDOIs(text) {
     // Unique DOIs only
     const unique = [...new Set(cleaned)];
     
+    console.log('Found DOIs:', unique);
     return unique;
 }
 
