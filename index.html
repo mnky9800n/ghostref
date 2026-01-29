@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CitationLint - Verify Academic Citations</title>
+    <meta name="description" content="Free tool to verify academic paper citations against CrossRef. Detect hallucinated references.">
+    <link rel="stylesheet" href="style.css">
+    <!-- PDF.js from CDN -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>📚 CitationLint</h1>
+            <p class="tagline">Verify academic paper citations against CrossRef</p>
+            <p class="privacy-note">🔒 100% client-side - your PDF never leaves your browser</p>
+        </header>
+
+        <main>
+            <!-- Upload Section -->
+            <section id="upload-section" class="card">
+                <div id="drop-zone" class="drop-zone">
+                    <div class="drop-zone-content">
+                        <span class="drop-icon">📄</span>
+                        <p>Drag & drop your PDF here</p>
+                        <p class="drop-hint">or click to browse</p>
+                    </div>
+                    <input type="file" id="file-input" accept=".pdf" hidden>
+                </div>
+                <div id="file-info" class="file-info hidden">
+                    <span class="file-name"></span>
+                    <button id="clear-file" class="btn-icon" title="Clear">✕</button>
+                </div>
+                <button id="verify-btn" class="btn-primary" disabled>
+                    <span class="btn-text">Verify Citations</span>
+                    <span class="btn-spinner hidden"></span>
+                </button>
+            </section>
+
+            <!-- Progress Section -->
+            <section id="progress-section" class="card hidden">
+                <div class="progress-content">
+                    <div class="spinner"></div>
+                    <p id="progress-text">Extracting text from PDF...</p>
+                    <div class="progress-bar-container">
+                        <div id="progress-bar" class="progress-bar" style="width: 0%"></div>
+                    </div>
+                    <p id="progress-detail" class="progress-detail"></p>
+                </div>
+            </section>
+
+            <!-- Results Section -->
+            <section id="results-section" class="card hidden">
+                <div class="results-header">
+                    <h2>Verification Results</h2>
+                    <button id="new-upload" class="btn-secondary">New Upload</button>
+                </div>
+
+                <!-- Summary Stats -->
+                <div class="stats-grid">
+                    <div class="stat-card">
+                        <span class="stat-number" id="stat-total">0</span>
+                        <span class="stat-label">DOIs Found</span>
+                    </div>
+                    <div class="stat-card stat-valid">
+                        <span class="stat-number" id="stat-valid">0</span>
+                        <span class="stat-label">Valid ✓</span>
+                    </div>
+                    <div class="stat-card stat-invalid">
+                        <span class="stat-number" id="stat-invalid">0</span>
+                        <span class="stat-label">Invalid ✗</span>
+                    </div>
+                    <div class="stat-card stat-unverified">
+                        <span class="stat-number" id="stat-errors">0</span>
+                        <span class="stat-label">Errors</span>
+                    </div>
+                </div>
+
+                <!-- Filter Buttons -->
+                <div class="filter-buttons">
+                    <button class="filter-btn active" data-filter="all">All</button>
+                    <button class="filter-btn" data-filter="valid">Valid</button>
+                    <button class="filter-btn" data-filter="invalid">Invalid</button>
+                    <button class="filter-btn" data-filter="error">Errors</button>
+                </div>
+
+                <!-- Citations List -->
+                <div id="citations-list" class="citations-list">
+                    <!-- Populated by JavaScript -->
+                </div>
+            </section>
+
+            <!-- Error Section -->
+            <section id="error-section" class="card error-card hidden">
+                <div class="error-content">
+                    <span class="error-icon">⚠️</span>
+                    <p id="error-message">Something went wrong</p>
+                    <button id="error-retry" class="btn-secondary">Try Again</button>
+                </div>
+            </section>
+        </main>
+
+        <footer>
+            <p>Built to catch hallucinated citations 💀🔥</p>
+            <p class="footer-links">
+                <a href="https://github.com/mnky9800n/citationlint" target="_blank">GitHub</a> ·
+                <a href="https://api.crossref.org" target="_blank">Powered by CrossRef</a>
+            </p>
+        </footer>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>
