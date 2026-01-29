@@ -1,6 +1,6 @@
 /**
- * GhostRef v0.0.9 - Hunt Hallucinated Citations
- * Uses PDF.js for parsing, CrossRef API for verification
+ * GhostRef v0.0.15 - Hunt Hallucinated Citations
+ * Uses PDF.js for parsing, Citation.js for DOI extraction, CrossRef API for verification
  * Your PDF never leaves your browser!
  */
 
@@ -9,7 +9,14 @@ pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs
 
 // CrossRef API
 const CROSSREF_API = 'https://api.crossref.org/works';
-const MAILTO = 'citationlint@example.com';
+const MAILTO = 'ghostref@example.com';
+
+// DOI regex patterns - comprehensive
+const DOI_PATTERNS = [
+    /\b(10\.\d{4,}\/[^\s\]\)>,;'"]+)/gi,                    // Standard DOI
+    /doi[:\s]+([^\s\]\)>,;'"]+)/gi,                          // doi: prefix
+    /https?:\/\/(?:dx\.)?doi\.org\/([^\s\]\)>,;'"]+)/gi,    // URL format
+];
 
 // DOM Elements
 const dropZone = document.getElementById('drop-zone');
@@ -390,25 +397,96 @@ function extractTitle(citationText) {
     return null;
 }
 
-// Verify citations against CrossRef by title search
+// Extract DOI from citation text
+function extractDOI(text) {
+    for (const pattern of DOI_PATTERNS) {
+        pattern.lastIndex = 0; // Reset regex state
+        const match = pattern.exec(text);
+        if (match) {
+            let doi = match[1];
+            // Clean trailing punctuation
+            doi = doi.replace(/[.,;:\)\]}>'"]+$/, '');
+            // Validate basic DOI format
+            if (doi.startsWith('10.') && doi.length > 7) {
+                return doi;
+            }
+        }
+    }
+    return null;
+}
+
+// Verify single DOI directly against CrossRef
+async function verifyDOI(doi) {
+    try {
+        const url = `${CROSSREF_API}/${encodeURIComponent(doi)}?mailto=${MAILTO}`;
+        const response = await fetch(url);
+        
+        if (response.status === 404) {
+            return { valid: false, error: 'DOI not found in CrossRef' };
+        }
+        
+        if (!response.ok) {
+            return { valid: null, error: `HTTP ${response.status}` };
+        }
+        
+        const data = await response.json();
+        const work = data.message;
+        
+        const authors = work.author || [];
+        const authorStr = authors.length > 0 
+            ? authors.slice(0, 3).map(a => a.family || a.name || 'Unknown').join(', ') + (authors.length > 3 ? ' et al.' : '')
+            : 'Unknown';
+        
+        return {
+            valid: true,
+            title: work.title?.[0] || 'Unknown',
+            authors: authorStr,
+            year: String(work.published?.['date-parts']?.[0]?.[0] || work.created?.['date-parts']?.[0]?.[0] || 'Unknown'),
+            doi: work.DOI,
+            journal: work['container-title']?.[0] || work.publisher || 'Unknown',
+            method: 'doi'
+        };
+        
+    } catch (error) {
+        return { valid: null, error: error.message || 'Network error' };
+    }
+}
+
+// Verify citations against CrossRef - DOI first, then title search
 async function verifyCitations(citations) {
     const results = [];
     const total = citations.length;
     
     for (let i = 0; i < citations.length; i++) {
         const citation = citations[i];
-        const title = extractTitle(citation.raw);
-        
         let result;
-        if (title) {
-            result = await searchCrossRef(title, citation.raw, citation.index);
-        } else {
+        
+        // Try DOI first (most reliable)
+        const doi = extractDOI(citation.raw);
+        if (doi) {
+            progressDetail.textContent = `Verifying DOI: ${doi}`;
+            const doiResult = await verifyDOI(doi);
             result = {
                 index: citation.index,
                 raw: citation.raw,
-                valid: null,
-                error: 'Could not extract title from citation'
+                doi: doi,
+                ...doiResult
             };
+        } else {
+            // Fall back to title search
+            const title = extractTitle(citation.raw);
+            if (title) {
+                progressDetail.textContent = `Searching: "${title.substring(0, 50)}..."`;
+                result = await searchCrossRef(title, citation.raw, citation.index);
+                result.method = 'title';
+            } else {
+                result = {
+                    index: citation.index,
+                    raw: citation.raw,
+                    valid: null,
+                    error: 'Could not extract DOI or title from citation'
+                };
+            }
         }
         
         results.push(result);
@@ -416,10 +494,9 @@ async function verifyCitations(citations) {
         // Update progress
         const progress = 40 + (55 * ((i + 1) / total));
         updateProgress(`Verified ${i + 1}/${total} citations...`, progress);
-        progressDetail.textContent = title ? `Searching: "${title.substring(0, 50)}..."` : 'Parsing citation...';
         
         // Rate limiting
-        await sleep(250);
+        await sleep(200);
     }
     
     return results;
@@ -588,6 +665,9 @@ function renderCitation(result) {
     
     let details = '';
     if (result.valid === true) {
+        const methodBadge = result.method === 'doi' 
+            ? '<span class="method-badge doi">DOI ✓</span>' 
+            : `<span class="method-badge title">${result.similarity}% match</span>`;
         details = `
             <div class="citation-details">
                 <div class="citation-title">${escapeHtml(result.title)}</div>
@@ -596,7 +676,7 @@ function renderCitation(result) {
                 </div>
                 <div class="citation-doi">
                     DOI: <a href="https://doi.org/${encodeURIComponent(result.doi)}" target="_blank">${escapeHtml(result.doi)}</a>
-                    <span class="similarity">(${result.similarity}% match)</span>
+                    ${methodBadge}
                 </div>
             </div>
         `;
@@ -604,7 +684,7 @@ function renderCitation(result) {
         details = `
             <div class="citation-details">
                 <div class="citation-error">${escapeHtml(result.error)}</div>
-                <div class="citation-searched">Searched for: "${escapeHtml(result.searchedTitle || 'N/A')}"</div>
+                <div class="citation-searched">Searched for: "${escapeHtml(result.searchedTitle || result.doi || 'N/A')}"</div>
             </div>
         `;
     } else {
