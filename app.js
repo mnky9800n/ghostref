@@ -46,7 +46,20 @@ function init() {
 
 // Drag and Drop
 function setupDragAndDrop() {
-    dropZone.addEventListener('click', () => fileInput.click());
+    const browseBtn = document.getElementById('browse-btn');
+    
+    // Browse button click
+    browseBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        fileInput.click();
+    });
+    
+    // Drop zone click (backup)
+    dropZone.addEventListener('click', (e) => {
+        if (e.target === dropZone) {
+            fileInput.click();
+        }
+    });
     
     dropZone.addEventListener('dragover', (e) => {
         e.preventDefault();
