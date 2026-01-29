@@ -481,6 +481,13 @@ footer {
     text-decoration: none !important;
 }
 
+.version {
+    font-size: 0.75rem;
+    opacity: 0.5;
+    margin-top: 1rem;
+    font-family: monospace;
+}
+
 /* Utilities */
 .hidden {
     display: none !important;
