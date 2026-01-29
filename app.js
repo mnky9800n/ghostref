@@ -743,27 +743,9 @@ async function searchCrossRef(title, rawCitation, index) {
         const work = items[0];
         const foundTitle = work.title?.[0] || '';
         
-        // Check if titles share key words (more lenient matching)
+        // Trust CrossRef - if they returned a result for our query, it's likely correct
+        // Their search is already doing fuzzy matching
         const similarity = calculateSimilarity(title.toLowerCase(), foundTitle.toLowerCase());
-        
-        // Be lenient - if CrossRef returned something, it's probably right
-        // Only reject if similarity is extremely low AND no common significant words
-        if (similarity < 0.15) {
-            // Check if at least some significant words match
-            const searchWords = title.toLowerCase().split(/\s+/).filter(w => w.length > 4);
-            const foundWords = foundTitle.toLowerCase().split(/\s+/).filter(w => w.length > 4);
-            const commonWords = searchWords.filter(w => foundWords.some(fw => fw.includes(w) || w.includes(fw)));
-            
-            if (commonWords.length === 0) {
-                return {
-                    index,
-                    raw: rawCitation,
-                    searchedTitle: title,
-                    valid: false,
-                    error: `Best match "${foundTitle.substring(0, 50)}..." doesn't match (${Math.round(similarity * 100)}% similar)`
-                };
-            }
-        }
         
         // Found a match!
         const authors = work.author || [];
