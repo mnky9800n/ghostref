@@ -404,44 +404,40 @@ function extractTitle(citationText) {
     let match = text.match(/["'']([^"'']{10,200})["'']/);
     if (match) return match[1].trim();
     
-    // Pattern 2: After (Year). Title here. (APA style)
+    // Pattern 2: After "et al." - this is very common: "Author et al. Title here. Journal"
+    match = text.match(/et\s+al\.\s+([A-Z][^.]{10,150})\./);
+    if (match) return match[1].trim();
+    
+    // Pattern 3: After author initials "A. B. Title here."
+    match = text.match(/[A-Z]\.\s+([A-Z][A-Za-z][^.]{10,150})\./);
+    if (match) return match[1].trim();
+    
+    // Pattern 4: After (Year). Title here. (APA style)
     match = text.match(/\(\d{4}\)\.\s*([^.]{10,200})\./);
     if (match) return match[1].trim();
     
-    // Pattern 3: Title before journal - look for pattern: Authors, Title, J. Something or Journal
-    // Format: "Name, I., Name, J., Title here, J. Comput. Phys."
-    match = text.match(/[A-Z]\.,\s*([A-Z][^,]{10,150}),\s*(?:J\.|[A-Z][a-z]+\s+[A-Z]|in:|Proc\.|Trans\.|Bull\.|Phys|SIAM|IEEE|Nature|Science)/);
+    // Pattern 5: Title before journal abbreviations
+    match = text.match(/\.\s+([A-Z][^.]{10,120})\.\s*(?:Nature|Science|Cell|Nat\.|Phys\.|J\.|Proc\.|In\s)/);
     if (match) return match[1].trim();
     
-    // Pattern 4: Title before year in parentheses - "Title here, Journal 123 (2020)"
-    match = text.match(/[A-Z]\.,\s*([A-Z][^,]{10,150}),\s*[A-Z][^(]+\(\d{4}\)/);
+    // Pattern 6: After "in:" or "In" for conference papers
+    match = text.match(/[,\.]\s*[Ii]n[:\s]+([^,]{10,100})/);
     if (match) return match[1].trim();
     
-    // Pattern 5: Look for capitalized phrase after author initials
-    match = text.match(/[A-Z]\.\s*,?\s*([A-Z][a-z]+(?:\s+[a-z]+){2,}(?:\s+[A-Za-z]+){0,10})/);
-    if (match && match[1].length > 15) return match[1].trim();
-    
-    // Pattern 6: After "in:" for conference papers
-    match = text.match(/,\s*in:\s*([^,]{10,100})/i);
-    if (match) return match[1].trim();
-    
-    // Fallback: grab middle chunk, skip first part (authors) and last part (journal/year)
-    const parts = text.split(/,\s*/);
-    if (parts.length >= 3) {
-        // Try the part that looks most like a title (longer, has spaces)
-        for (let i = 1; i < parts.length - 1; i++) {
-            const part = parts[i].trim();
-            if (part.length > 20 && part.includes(' ') && /^[A-Z]/.test(part)) {
-                return part;
-            }
+    // Fallback: Find the longest capitalized phrase that looks like a title
+    const sentences = text.split(/\.\s+/);
+    for (const sent of sentences) {
+        // Skip if it looks like author names (has "," and single letters)
+        if (/^[A-Z][a-z]+,\s*[A-Z]\./.test(sent)) continue;
+        // Skip if too short or looks like journal
+        if (sent.length < 15 || sent.length > 200) continue;
+        if (/^\d+,\s*\d+/.test(sent)) continue; // Volume, page
+        if (/^[A-Z][a-z]+\.\s*[A-Z][a-z]+\./.test(sent)) continue; // J. Chem. Phys.
+        
+        // This might be a title
+        if (/^[A-Z]/.test(sent) && sent.includes(' ')) {
+            return sent.trim();
         }
-    }
-    
-    // Last resort: take words 3-15
-    const words = text.split(/\s+/);
-    if (words.length > 8) {
-        const titleWords = words.slice(3, 12).join(' ');
-        if (titleWords.length > 15) return titleWords;
     }
     
     return null;
