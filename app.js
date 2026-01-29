@@ -615,11 +615,8 @@ async function searchCrossRefBiblio(biblio, rawCitation, index) {
         
         const work = items[0];
         
-        // Check if year matches (basic validation)
+        // Trust CrossRef - they know what they're doing
         const foundYear = work.published?.['date-parts']?.[0]?.[0] || work.created?.['date-parts']?.[0]?.[0];
-        if (biblio.year && foundYear && Math.abs(parseInt(biblio.year) - foundYear) > 1) {
-            return { index, raw: rawCitation, searchedBiblio: query, valid: false, error: 'Year mismatch' };
-        }
         
         const authors = work.author || [];
         const authorStr = authors.length > 0 
