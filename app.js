@@ -473,9 +473,22 @@ function showResults() {
     document.getElementById('stat-errors').textContent = errors;
     
     // Default to showing invalid citations (the ones that need attention)
-    currentFilter = 'invalid';
-    filterBtns.forEach(b => b.classList.remove('active'));
-    document.querySelector('.filter-btn[data-filter="invalid"]').classList.add('active');
+    // But if none are invalid, show all
+    if (invalid > 0) {
+        currentFilter = 'invalid';
+    } else if (errors > 0) {
+        currentFilter = 'error';
+    } else {
+        currentFilter = 'all';
+    }
+    
+    // Update filter button UI
+    document.querySelectorAll('.filter-btn').forEach(btn => {
+        btn.classList.remove('active');
+        if (btn.dataset.filter === currentFilter) {
+            btn.classList.add('active');
+        }
+    });
     
     renderResults();
 }
