@@ -1,5 +1,5 @@
 /**
- * CitationLint - 100% Client-Side Citation Verification
+ * CitationLint v0.0.5 - Citation Verification by Title Search
  * Uses PDF.js for parsing, CrossRef API for verification
  * Your PDF never leaves your browser!
  */
@@ -7,12 +7,9 @@
 // Configure PDF.js worker
 pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
 
-// CrossRef API (CORS-enabled, no key needed)
-const CROSSREF_API = 'https://api.crossref.org/works/';
-const MAILTO = 'citationlint@example.com'; // Polite pool
-
-// DOI regex pattern
-const DOI_PATTERN = /\b(10\.\d{4,}\/[^\s\]>)"']+)/gi;
+// CrossRef API
+const CROSSREF_API = 'https://api.crossref.org/works';
+const MAILTO = 'citationlint@example.com';
 
 // DOM Elements
 const dropZone = document.getElementById('drop-zone');
@@ -137,28 +134,39 @@ async function startVerification() {
         updateProgress('Extracting text from PDF...', 10);
         const text = await extractTextFromPDF(selectedFile);
         
-        // Step 2: Find DOIs
-        updateProgress('Finding DOIs...', 30);
-        const dois = extractDOIs(text);
-        
-        if (dois.length === 0) {
-            throw new Error('No DOIs found in this PDF. The paper may not include DOI references, or it might be a scanned image.');
+        if (!text.trim()) {
+            throw new Error('Could not extract text from PDF. It may be a scanned image.');
         }
         
-        // Step 3: Verify each DOI against CrossRef
-        updateProgress(`Verifying ${dois.length} DOIs against CrossRef...`, 40);
-        const results = await verifyDOIs(dois);
+        // Step 2: Find references section
+        updateProgress('Finding references section...', 20);
+        const refsSection = findReferencesSection(text);
+        console.log('References section:', refsSection.substring(0, 500));
         
-        // Step 4: Show results
+        // Step 3: Parse individual citations
+        updateProgress('Parsing citations...', 30);
+        const citations = parseCitations(refsSection);
+        console.log('Found citations:', citations.length);
+        
+        if (citations.length === 0) {
+            throw new Error('Could not parse citations from the references section.');
+        }
+        
+        // Step 4: Verify each citation against CrossRef
+        updateProgress(`Verifying ${citations.length} citations...`, 40);
+        const results = await verifyCitations(citations);
+        
+        // Step 5: Show results
         currentResults = results;
         showResults();
         
     } catch (error) {
+        console.error('Error:', error);
         showError(error.message);
     }
 }
 
-// PDF Text Extraction using PDF.js
+// PDF Text Extraction
 async function extractTextFromPDF(file) {
     const arrayBuffer = await file.arrayBuffer();
     const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
@@ -172,8 +180,7 @@ async function extractTextFromPDF(file) {
         const pageText = textContent.items.map(item => item.str).join(' ');
         fullText += pageText + '\n';
         
-        // Update progress for large PDFs
-        const extractProgress = 10 + (20 * (i / numPages));
+        const extractProgress = 10 + (10 * (i / numPages));
         updateProgress(`Extracting page ${i}/${numPages}...`, extractProgress);
     }
     
@@ -182,14 +189,12 @@ async function extractTextFromPDF(file) {
 
 // Find References Section
 function findReferencesSection(text) {
-    // Common section headers
     const patterns = [
         /\n\s*References?\s*\n/i,
         /\n\s*Bibliography\s*\n/i,
         /\n\s*REFERENCES?\s*\n/i,
         /\n\s*Works?\s+Cited\s*\n/i,
         /\n\s*Literature\s+Cited\s*\n/i,
-        /\n\s*Citations?\s*\n/i,
     ];
     
     for (const pattern of patterns) {
@@ -200,123 +205,232 @@ function findReferencesSection(text) {
         }
     }
     
-    // Fallback: return last 30% of text (refs usually at end)
-    console.log('No references header found, using last 30% of text');
-    const cutoff = Math.floor(text.length * 0.7);
-    return text.substring(cutoff);
+    // Fallback: last 30% of document
+    console.log('No references header found, using last 30%');
+    return text.substring(Math.floor(text.length * 0.7));
 }
 
-// DOI Extraction - only from References section
-function extractDOIs(text) {
-    // First, find the references section
-    const refsSection = findReferencesSection(text);
-    console.log('References section length:', refsSection.length);
+// Parse individual citations from references section
+function parseCitations(text) {
+    const citations = [];
     
-    const matches = refsSection.match(DOI_PATTERN) || [];
+    // Try different citation patterns
     
-    // Clean and deduplicate
-    const cleaned = matches.map(doi => {
-        // Remove trailing punctuation
-        return doi.replace(/[.,;:)\]}>'"]+$/, '');
-    });
+    // Pattern 1: Numbered citations [1], [2], etc.
+    let matches = text.split(/\[\d+\]\s*/);
+    if (matches.length > 2) {
+        console.log('Using bracketed number pattern');
+        for (let i = 1; i < matches.length; i++) {
+            const citation = cleanCitation(matches[i]);
+            if (citation) citations.push({ raw: citation, index: i });
+        }
+        if (citations.length > 0) return citations;
+    }
     
-    // Unique DOIs only
-    const unique = [...new Set(cleaned)];
+    // Pattern 2: Numbered with dot: 1. 2. 3.
+    matches = text.split(/\n\s*\d+\.\s+/);
+    if (matches.length > 2) {
+        console.log('Using dot number pattern');
+        for (let i = 1; i < matches.length; i++) {
+            const citation = cleanCitation(matches[i]);
+            if (citation) citations.push({ raw: citation, index: i });
+        }
+        if (citations.length > 0) return citations;
+    }
     
-    console.log('Found DOIs:', unique);
-    return unique;
+    // Pattern 3: Author-year style (split by apparent new references)
+    // Look for patterns like: Newline followed by Author names and year
+    const authorYearPattern = /\n(?=[A-Z][a-z]+,?\s+[A-Z]\.?.*?\(\d{4}\))/g;
+    matches = text.split(authorYearPattern);
+    if (matches.length > 2) {
+        console.log('Using author-year pattern');
+        for (let i = 1; i < matches.length; i++) {
+            const citation = cleanCitation(matches[i]);
+            if (citation) citations.push({ raw: citation, index: i });
+        }
+        if (citations.length > 0) return citations;
+    }
+    
+    // Fallback: split by double newlines or periods followed by newlines
+    matches = text.split(/\.\s*\n\s*\n|\n\s*\n/);
+    console.log('Using paragraph split fallback');
+    for (let i = 0; i < matches.length; i++) {
+        const citation = cleanCitation(matches[i]);
+        if (citation && citation.length > 30) {  // Likely a real citation
+            citations.push({ raw: citation, index: i + 1 });
+        }
+    }
+    
+    return citations;
 }
 
-// Verify DOIs against CrossRef
-async function verifyDOIs(dois) {
+function cleanCitation(text) {
+    if (!text) return null;
+    // Clean up whitespace, limit length
+    let cleaned = text.replace(/\s+/g, ' ').trim();
+    // Take first ~500 chars (one citation shouldn't be longer)
+    if (cleaned.length > 500) {
+        cleaned = cleaned.substring(0, 500);
+    }
+    return cleaned.length > 10 ? cleaned : null;
+}
+
+// Extract likely title from citation text
+function extractTitle(citationText) {
+    // Common patterns for titles in citations:
+    
+    // Pattern 1: Text in quotes "Title here"
+    let match = citationText.match(/"([^"]{10,200})"/);
+    if (match) return match[1];
+    
+    // Pattern 2: Text in italics markers or after year: (2020). Title here.
+    match = citationText.match(/\(\d{4}\)\.\s*([^.]{10,200})\./);
+    if (match) return match[1];
+    
+    // Pattern 3: After year with comma: (2020), Title here,
+    match = citationText.match(/\(\d{4}\),?\s*([^,]{10,200}),/);
+    if (match) return match[1];
+    
+    // Pattern 4: After authors (Name, I., Name, J.) Title here.
+    match = citationText.match(/(?:[A-Z][a-z]+,\s*[A-Z]\.?,?\s*(?:&|and)?\s*)+([A-Z][^.]{10,200})\./);
+    if (match) return match[1];
+    
+    // Fallback: take a chunk from the middle (skip author names at start)
+    const words = citationText.split(/\s+/);
+    if (words.length > 5) {
+        // Skip first few words (likely authors) and take next chunk
+        const titleWords = words.slice(3, 15).join(' ');
+        if (titleWords.length > 15) return titleWords;
+    }
+    
+    return null;
+}
+
+// Verify citations against CrossRef by title search
+async function verifyCitations(citations) {
     const results = [];
-    const total = dois.length;
+    const total = citations.length;
     
-    // Process in batches to avoid rate limiting
-    const batchSize = 5;
-    const delay = 200; // ms between batches
-    
-    for (let i = 0; i < dois.length; i += batchSize) {
-        const batch = dois.slice(i, i + batchSize);
+    for (let i = 0; i < citations.length; i++) {
+        const citation = citations[i];
+        const title = extractTitle(citation.raw);
         
-        const batchResults = await Promise.all(
-            batch.map(doi => verifyDOI(doi))
-        );
+        let result;
+        if (title) {
+            result = await searchCrossRef(title, citation.raw, citation.index);
+        } else {
+            result = {
+                index: citation.index,
+                raw: citation.raw,
+                valid: null,
+                error: 'Could not extract title from citation'
+            };
+        }
         
-        results.push(...batchResults);
+        results.push(result);
         
         // Update progress
-        const progress = 40 + (55 * (results.length / total));
-        updateProgress(`Verified ${results.length}/${total} DOIs...`, progress);
-        progressDetail.textContent = `Checking: ${batch[0]}...`;
+        const progress = 40 + (55 * ((i + 1) / total));
+        updateProgress(`Verified ${i + 1}/${total} citations...`, progress);
+        progressDetail.textContent = title ? `Searching: "${title.substring(0, 50)}..."` : 'Parsing citation...';
         
-        // Rate limit delay
-        if (i + batchSize < dois.length) {
-            await sleep(delay);
-        }
+        // Rate limiting
+        await sleep(250);
     }
     
     return results;
 }
 
-// Verify single DOI
-async function verifyDOI(doi) {
+// Search CrossRef by title
+async function searchCrossRef(title, rawCitation, index) {
     try {
-        const url = `${CROSSREF_API}${encodeURIComponent(doi)}?mailto=${MAILTO}`;
-        const response = await fetch(url);
+        const query = encodeURIComponent(title);
+        const url = `${CROSSREF_API}?query.title=${query}&rows=1&mailto=${MAILTO}`;
         
-        if (response.status === 404) {
-            return {
-                doi,
-                valid: false,
-                error: 'DOI not found in CrossRef'
-            };
-        }
+        const response = await fetch(url);
         
         if (!response.ok) {
             return {
-                doi,
+                index,
+                raw: rawCitation,
+                searchedTitle: title,
                 valid: null,
                 error: `HTTP ${response.status}`
             };
         }
         
         const data = await response.json();
-        const work = data.message;
+        const items = data.message?.items || [];
+        
+        if (items.length === 0) {
+            return {
+                index,
+                raw: rawCitation,
+                searchedTitle: title,
+                valid: false,
+                error: 'No matching publication found in CrossRef'
+            };
+        }
+        
+        const work = items[0];
+        const foundTitle = work.title?.[0] || '';
+        
+        // Check if titles are similar enough (fuzzy match)
+        const similarity = calculateSimilarity(title.toLowerCase(), foundTitle.toLowerCase());
+        
+        if (similarity < 0.4) {
+            return {
+                index,
+                raw: rawCitation,
+                searchedTitle: title,
+                valid: false,
+                error: `Best match "${foundTitle.substring(0, 50)}..." doesn't match (${Math.round(similarity * 100)}% similar)`
+            };
+        }
+        
+        // Found a match!
+        const authors = work.author || [];
+        const authorStr = authors.length > 0 
+            ? authors.slice(0, 3).map(a => a.family || a.name || 'Unknown').join(', ') + (authors.length > 3 ? ' et al.' : '')
+            : 'Unknown';
+        
+        const year = work.published?.['date-parts']?.[0]?.[0] || 
+                     work.created?.['date-parts']?.[0]?.[0] || 
+                     'Unknown';
         
         return {
-            doi,
+            index,
+            raw: rawCitation,
+            searchedTitle: title,
             valid: true,
-            title: work.title?.[0] || 'Unknown title',
-            authors: formatAuthors(work.author),
-            year: work.published?.['date-parts']?.[0]?.[0] || 
-                  work.created?.['date-parts']?.[0]?.[0] || 
-                  'Unknown',
+            title: foundTitle,
+            authors: authorStr,
+            year: String(year),
+            doi: work.DOI,
             journal: work['container-title']?.[0] || work.publisher || 'Unknown',
-            type: work.type || 'Unknown'
+            similarity: Math.round(similarity * 100)
         };
         
     } catch (error) {
         return {
-            doi,
+            index,
+            raw: rawCitation,
+            searchedTitle: title,
             valid: null,
             error: error.message || 'Network error'
         };
     }
 }
 
-function formatAuthors(authors) {
-    if (!authors || authors.length === 0) return 'Unknown authors';
+// Simple string similarity (Jaccard on words)
+function calculateSimilarity(str1, str2) {
+    const words1 = new Set(str1.split(/\s+/).filter(w => w.length > 2));
+    const words2 = new Set(str2.split(/\s+/).filter(w => w.length > 2));
     
-    const names = authors.slice(0, 3).map(a => {
-        if (a.family && a.given) return `${a.family}, ${a.given.charAt(0)}.`;
-        if (a.family) return a.family;
-        if (a.name) return a.name;
-        return 'Unknown';
-    });
+    const intersection = new Set([...words1].filter(x => words2.has(x)));
+    const union = new Set([...words1, ...words2]);
     
-    if (authors.length > 3) names.push('et al.');
-    return names.join(', ');
+    return union.size > 0 ? intersection.size / union.size : 0;
 }
 
 // UI Updates
@@ -336,7 +450,6 @@ function showResults() {
     progressSection.classList.add('hidden');
     resultsSection.classList.remove('hidden');
     
-    // Calculate stats
     const valid = currentResults.filter(r => r.valid === true).length;
     const invalid = currentResults.filter(r => r.valid === false).length;
     const errors = currentResults.filter(r => r.valid === null).length;
@@ -368,8 +481,8 @@ function renderCitation(result) {
                        result.valid === false ? 'invalid' : 'error';
     const statusIcon = result.valid === true ? '✓' : 
                       result.valid === false ? '✗' : '?';
-    const statusText = result.valid === true ? 'Valid' : 
-                      result.valid === false ? 'Invalid' : 'Error';
+    const statusText = result.valid === true ? 'Verified' : 
+                      result.valid === false ? 'Not Found' : 'Error';
     
     let details = '';
     if (result.valid === true) {
@@ -379,6 +492,17 @@ function renderCitation(result) {
                 <div class="citation-meta">
                     ${escapeHtml(result.authors)} (${result.year}) · ${escapeHtml(result.journal)}
                 </div>
+                <div class="citation-doi">
+                    DOI: <a href="https://doi.org/${encodeURIComponent(result.doi)}" target="_blank">${escapeHtml(result.doi)}</a>
+                    <span class="similarity">(${result.similarity}% match)</span>
+                </div>
+            </div>
+        `;
+    } else if (result.valid === false) {
+        details = `
+            <div class="citation-details">
+                <div class="citation-error">${escapeHtml(result.error)}</div>
+                <div class="citation-searched">Searched for: "${escapeHtml(result.searchedTitle || 'N/A')}"</div>
             </div>
         `;
     } else {
@@ -391,15 +515,14 @@ function renderCitation(result) {
     
     return `
         <div class="citation-item ${statusClass}">
-            <div class="citation-status">
-                <span class="status-icon">${statusIcon}</span>
-                <span class="status-text">${statusText}</span>
+            <div class="citation-header">
+                <div class="citation-status">
+                    <span class="status-icon">${statusIcon}</span>
+                    <span class="status-text">${statusText}</span>
+                </div>
+                <span class="citation-index">#${result.index}</span>
             </div>
-            <div class="citation-doi">
-                <a href="https://doi.org/${encodeURIComponent(result.doi)}" target="_blank" rel="noopener">
-                    ${escapeHtml(result.doi)}
-                </a>
-            </div>
+            <div class="citation-raw">${escapeHtml(result.raw.substring(0, 200))}${result.raw.length > 200 ? '...' : ''}</div>
             ${details}
         </div>
     `;
