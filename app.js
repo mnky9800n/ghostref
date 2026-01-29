@@ -158,34 +158,48 @@ async function startVerification() {
             throw new Error('Could not extract text from PDF. It may be a scanned image.');
         }
         
-        // Step 2: Extract ALL DOIs from entire document (format-agnostic approach)
-        updateProgress('Scanning for DOIs...', 30);
-        const dois = extractAllDOIs(text);
-        console.log('Found DOIs:', dois.length, dois.slice(0, 5));
+        let allResults = [];
         
-        if (dois.length === 0) {
-            // Fallback to citation parsing if no DOIs found
-            updateProgress('No DOIs found, trying citation parsing...', 35);
-            const refsSection = findReferencesSection(text);
-            const citations = parseCitations(refsSection);
-            
-            if (citations.length === 0) {
-                throw new Error('No DOIs found and could not parse citations. The PDF may not contain verifiable references.');
-            }
-            
-            updateProgress(`Verifying ${citations.length} citations by title...`, 40);
-            const results = await verifyCitations(citations);
-            currentResults = results;
-            showResults();
-            return;
+        // Step 2: Extract ALL DOIs from entire document
+        updateProgress('Scanning for DOIs...', 20);
+        const dois = extractAllDOIs(text);
+        console.log('Found DOIs:', dois.length);
+        
+        if (dois.length > 0) {
+            updateProgress(`Verifying ${dois.length} DOIs...`, 30);
+            const doiResults = await verifyDOIs(dois);
+            allResults = allResults.concat(doiResults);
         }
         
-        // Step 3: Verify each DOI directly against CrossRef
-        updateProgress(`Verifying ${dois.length} DOIs...`, 40);
-        const results = await verifyDOIs(dois);
+        // Step 3: Also parse citations (for refs without DOIs)
+        updateProgress('Parsing citations...', 50);
+        const refsSection = findReferencesSection(text);
+        const citations = parseCitations(refsSection);
+        console.log('Found citations:', citations.length);
+        
+        if (citations.length > 0) {
+            // Filter out citations that we already verified via DOI
+            const verifiedDOIs = new Set(allResults.filter(r => r.valid).map(r => r.doi?.toLowerCase()));
+            const unverifiedCitations = citations.filter(c => {
+                const citDOI = extractDOI(c.raw);
+                return !citDOI || !verifiedDOIs.has(citDOI.toLowerCase());
+            });
+            
+            if (unverifiedCitations.length > 0) {
+                updateProgress(`Verifying ${unverifiedCitations.length} citations by title...`, 60);
+                const citResults = await verifyCitations(unverifiedCitations);
+                // Renumber to continue from DOI results
+                citResults.forEach((r, i) => r.index = allResults.length + i + 1);
+                allResults = allResults.concat(citResults);
+            }
+        }
+        
+        if (allResults.length === 0) {
+            throw new Error('Could not find any DOIs or parseable citations in this PDF.');
+        }
         
         // Step 4: Show results
-        currentResults = results;
+        currentResults = allResults;
         showResults();
         
     } catch (error) {
