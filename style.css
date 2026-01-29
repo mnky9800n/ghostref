@@ -57,31 +57,31 @@ header h1 {
     text-shadow: 0 2px 4px rgba(0,0,0,0.1);
 }
 
-/* Ghostwriter-style logo */
+/* Ghostwriter-style logo - script font like the PBS show */
 .logo {
-    font-family: 'Georgia', serif;
-    font-size: 3.5rem;
+    font-family: 'Pacifico', cursive;
+    font-size: 4rem;
     font-weight: normal;
-    letter-spacing: -2px;
+    letter-spacing: 1px;
 }
 
 .logo-ghost {
-    font-style: italic;
     color: #00ffff;
     text-shadow: 
         0 0 10px #00ffff,
         0 0 20px #00ffff,
         0 0 30px #00ffff,
-        0 0 40px #00aaaa;
+        0 0 40px #00aaaa,
+        2px 2px 4px rgba(0,0,0,0.3);
     animation: ghostGlow 2s ease-in-out infinite alternate;
 }
 
 .logo-ref {
-    font-style: italic;
     color: #ffffff;
     text-shadow: 
         0 0 5px #ffffff,
-        0 0 10px #00ffff;
+        0 0 10px #00ffff,
+        2px 2px 4px rgba(0,0,0,0.3);
 }
 
 @keyframes ghostGlow {
@@ -90,14 +90,16 @@ header h1 {
             0 0 10px #00ffff,
             0 0 20px #00ffff,
             0 0 30px #00ffff,
-            0 0 40px #00aaaa;
+            0 0 40px #00aaaa,
+            2px 2px 4px rgba(0,0,0,0.3);
     }
     to {
         text-shadow: 
             0 0 5px #00ffff,
             0 0 10px #00ffff,
             0 0 20px #00ffff,
-            0 0 30px #00aaaa;
+            0 0 30px #00aaaa,
+            2px 2px 4px rgba(0,0,0,0.3);
     }
 }
 
