@@ -202,7 +202,7 @@ async function extractTextFromPDF(file) {
 
 // Find References Section
 function findReferencesSection(text) {
-    const patterns = [
+    const startPatterns = [
         /\n\s*References?\s*\n/i,
         /\n\s*Bibliography\s*\n/i,
         /\n\s*REFERENCES?\s*\n/i,
@@ -210,17 +210,47 @@ function findReferencesSection(text) {
         /\n\s*Literature\s+Cited\s*\n/i,
     ];
     
-    for (const pattern of patterns) {
+    // Patterns that indicate END of references section
+    const endPatterns = [
+        /\n\s*Appendix/i,
+        /\n\s*APPENDIX/i,
+        /\n\s*Further\s+reading/i,
+        /\n\s*Supplementary/i,
+        /\n\s*Acknowledgment/i,
+        /\n\s*Author\s+contributions/i,
+        /\n\s*Data\s+availability/i,
+        /\n\s*Conflict\s+of\s+interest/i,
+    ];
+    
+    let refsStart = -1;
+    for (const pattern of startPatterns) {
         const match = text.search(pattern);
         if (match !== -1) {
+            refsStart = match;
             console.log('Found references section at position:', match);
-            return text.substring(match);
+            break;
         }
     }
     
-    // Fallback: last 30% of document
-    console.log('No references header found, using last 30%');
-    return text.substring(Math.floor(text.length * 0.7));
+    if (refsStart === -1) {
+        console.log('No references header found, using last 30%');
+        return text.substring(Math.floor(text.length * 0.7));
+    }
+    
+    // Get text from references start
+    let refsText = text.substring(refsStart);
+    
+    // Try to find where references END
+    for (const pattern of endPatterns) {
+        const endMatch = refsText.substring(100).search(pattern); // Skip first 100 chars (the "References" header)
+        if (endMatch !== -1) {
+            console.log('Found end of references at:', endMatch + 100);
+            refsText = refsText.substring(0, endMatch + 100);
+            break;
+        }
+    }
+    
+    return refsText;
 }
 
 // Parse individual citations from references section
@@ -230,51 +260,71 @@ function parseCitations(text) {
     // Try different citation patterns
     
     // Pattern 1: Numbered citations [1], [2], etc.
-    let matches = text.split(/\[\d+\]\s*/);
-    if (matches.length > 2) {
-        console.log('Using bracketed number pattern');
-        for (let i = 1; i < matches.length; i++) {
-            const citation = cleanCitation(matches[i]);
-            if (citation) citations.push({ raw: citation, index: i });
+    const bracketMatches = text.match(/\[\d+\][^\[]+/g);
+    if (bracketMatches && bracketMatches.length > 2) {
+        console.log('Using bracketed number pattern, found:', bracketMatches.length);
+        for (let i = 0; i < bracketMatches.length; i++) {
+            const raw = bracketMatches[i];
+            const numMatch = raw.match(/\[(\d+)\]/);
+            const index = numMatch ? parseInt(numMatch[1]) : i + 1;
+            const citationText = raw.replace(/\[\d+\]\s*/, '').trim();
+            const citation = cleanCitation(citationText);
+            if (citation && looksLikeCitation(citation)) {
+                citations.push({ raw: citation, index: index });
+            }
         }
         if (citations.length > 0) return citations;
     }
     
     // Pattern 2: Numbered with dot: 1. 2. 3.
-    matches = text.split(/\n\s*\d+\.\s+/);
-    if (matches.length > 2) {
-        console.log('Using dot number pattern');
-        for (let i = 1; i < matches.length; i++) {
-            const citation = cleanCitation(matches[i]);
-            if (citation) citations.push({ raw: citation, index: i });
+    const dotMatches = text.match(/(?:^|\n)\s*\d+\.\s+[A-Z][^\n]+(?:\n(?!\s*\d+\.)[^\n]+)*/gm);
+    if (dotMatches && dotMatches.length > 2) {
+        console.log('Using dot number pattern, found:', dotMatches.length);
+        for (let i = 0; i < dotMatches.length; i++) {
+            const raw = dotMatches[i];
+            const numMatch = raw.match(/(\d+)\./);
+            const index = numMatch ? parseInt(numMatch[1]) : i + 1;
+            const citationText = raw.replace(/^\s*\d+\.\s*/, '').trim();
+            const citation = cleanCitation(citationText);
+            if (citation && looksLikeCitation(citation)) {
+                citations.push({ raw: citation, index: index });
+            }
         }
         if (citations.length > 0) return citations;
     }
     
-    // Pattern 3: Author-year style (split by apparent new references)
-    // Look for patterns like: Newline followed by Author names and year
-    const authorYearPattern = /\n(?=[A-Z][a-z]+,?\s+[A-Z]\.?.*?\(\d{4}\))/g;
-    matches = text.split(authorYearPattern);
-    if (matches.length > 2) {
-        console.log('Using author-year pattern');
-        for (let i = 1; i < matches.length; i++) {
-            const citation = cleanCitation(matches[i]);
-            if (citation) citations.push({ raw: citation, index: i });
+    // Pattern 3: Author-year style - look for author names followed by year
+    const authorYearMatches = text.match(/[A-Z][a-z]+,?\s+[A-Z]\.?[^.]*\(\d{4}\)[^.]*\./g);
+    if (authorYearMatches && authorYearMatches.length > 2) {
+        console.log('Using author-year pattern, found:', authorYearMatches.length);
+        for (let i = 0; i < authorYearMatches.length; i++) {
+            const citation = cleanCitation(authorYearMatches[i]);
+            if (citation && looksLikeCitation(citation)) {
+                citations.push({ raw: citation, index: i + 1 });
+            }
         }
         if (citations.length > 0) return citations;
     }
     
-    // Fallback: split by double newlines or periods followed by newlines
-    matches = text.split(/\.\s*\n\s*\n|\n\s*\n/);
-    console.log('Using paragraph split fallback');
-    for (let i = 0; i < matches.length; i++) {
-        const citation = cleanCitation(matches[i]);
-        if (citation && citation.length > 30) {  // Likely a real citation
-            citations.push({ raw: citation, index: i + 1 });
-        }
-    }
-    
+    console.log('No citation pattern matched well');
     return citations;
+}
+
+// Check if text looks like a real citation (has author-like names and year)
+function looksLikeCitation(text) {
+    // Must have something that looks like a year
+    if (!/\b(19|20)\d{2}\b/.test(text)) return false;
+    
+    // Must have something that looks like author names (Initial. or Name,)
+    if (!/[A-Z]\.|[A-Z][a-z]+,/.test(text)) return false;
+    
+    // Must be reasonable length
+    if (text.length < 30 || text.length > 1000) return false;
+    
+    // Should not be just a header or equation
+    if (/^(Theorem|Lemma|Proof|Definition|Appendix|Figure|Table)\b/i.test(text)) return false;
+    
+    return true;
 }
 
 function cleanCitation(text) {
