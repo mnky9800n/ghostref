@@ -1,5 +1,5 @@
 /**
- * CitationLint v0.0.5 - Citation Verification by Title Search
+ * GhostRef v0.0.9 - Hunt Hallucinated Citations
  * Uses PDF.js for parsing, CrossRef API for verification
  * Your PDF never leaves your browser!
  */
