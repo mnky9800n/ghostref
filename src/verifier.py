@@ -20,7 +20,7 @@ from difflib import SequenceMatcher
 # CrossRef API configuration
 CROSSREF_API_BASE = "https://api.crossref.org/works/"
 CROSSREF_QUERY_BASE = "https://api.crossref.org/works"
-POLITE_EMAIL = "citationlint@example.com"  # Gets us in the polite pool (faster)
+POLITE_EMAIL = "ghostref@example.com"  # Gets us in the polite pool (faster)
 REQUEST_TIMEOUT = 10  # seconds
 RATE_LIMIT_DELAY = 0.1  # 100ms between requests (conservative)
 TITLE_MATCH_THRESHOLD = 0.85  # Similarity threshold for title matching

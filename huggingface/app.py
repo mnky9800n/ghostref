@@ -12,7 +12,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 
 # CrossRef API
 CROSSREF_API = "https://api.crossref.org/works/"
-MAILTO = "citationlint@example.com"
+MAILTO = "ghostref@example.com"
 
 # DOI patterns - multiple to catch different formats
 DOI_PATTERNS = [
@@ -295,7 +295,7 @@ with gr.Blocks(title="CitationLint", theme=gr.themes.Soft()) as app:
     
     ---
     
-    Built to catch hallucinated citations 💀🔥 | [GitHub](https://github.com/mnky9800n/citationlint) | Powered by [CrossRef](https://www.crossref.org/)
+    Built to catch hallucinated citations 💀🔥 | [GitHub](https://github.com/mnky9800n/ghostref) | Powered by [CrossRef](https://www.crossref.org/)
     """)
 
 if __name__ == "__main__":

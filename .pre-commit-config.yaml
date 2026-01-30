@@ -4,7 +4,7 @@
 repos:
   - repo: local
     hooks:
-      - id: citationlint-tests
+      - id: ghostref-tests
         name: CitationLint regression tests
         entry: python3 -m pytest tests/test_regression.py -v --tb=short
         language: system
