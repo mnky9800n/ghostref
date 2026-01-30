@@ -520,44 +520,130 @@ async function verifyDOIs(dois) {
     return results;
 }
 
-// Verify single DOI directly against CrossRef
+// Verify single DOI - try CrossRef first, then doi.org as fallback
 async function verifyDOI(doi) {
     try {
+        // Step 1: Try CrossRef (gives us metadata)
         const url = `${CROSSREF_API}/${encodeURIComponent(doi)}?mailto=${MAILTO}`;
         const response = await fetch(url);
         
+        if (response.ok) {
+            const data = await response.json();
+            const work = data.message;
+            
+            const authors = work.author || [];
+            const authorStr = authors.length > 0 
+                ? authors.slice(0, 3).map(a => a.family || a.name || 'Unknown').join(', ') + (authors.length > 3 ? ' et al.' : '')
+                : 'Unknown';
+            
+            return {
+                valid: true,
+                title: work.title?.[0] || 'Unknown',
+                authors: authorStr,
+                year: String(work.published?.['date-parts']?.[0]?.[0] || work.created?.['date-parts']?.[0]?.[0] || 'Unknown'),
+                doi: work.DOI,
+                journal: work['container-title']?.[0] || work.publisher || 'Unknown',
+                method: 'crossref'
+            };
+        }
+        
+        // Step 2: CrossRef failed (404 or error) - try doi.org to see if DOI exists at all
+        // This catches Zenodo, arXiv, DataCite DOIs that aren't in CrossRef
         if (response.status === 404) {
-            return { valid: false, error: 'DOI not found in CrossRef' };
+            const doiOrgValid = await checkDoiOrg(doi);
+            if (doiOrgValid) {
+                return {
+                    valid: true,
+                    title: 'Valid DOI (not indexed by CrossRef)',
+                    authors: 'Unknown',
+                    year: 'Unknown',
+                    doi: doi,
+                    journal: 'DataCite/Zenodo/Other',
+                    method: 'doi.org'
+                };
+            }
+            return { valid: false, error: 'DOI not found in CrossRef or doi.org' };
         }
         
-        if (!response.ok) {
-            return { valid: null, error: `HTTP ${response.status}` };
-        }
-        
-        const data = await response.json();
-        const work = data.message;
-        
-        const authors = work.author || [];
-        const authorStr = authors.length > 0 
-            ? authors.slice(0, 3).map(a => a.family || a.name || 'Unknown').join(', ') + (authors.length > 3 ? ' et al.' : '')
-            : 'Unknown';
-        
-        return {
-            valid: true,
-            title: work.title?.[0] || 'Unknown',
-            authors: authorStr,
-            year: String(work.published?.['date-parts']?.[0]?.[0] || work.created?.['date-parts']?.[0]?.[0] || 'Unknown'),
-            doi: work.DOI,
-            journal: work['container-title']?.[0] || work.publisher || 'Unknown',
-            method: 'doi'
-        };
+        return { valid: null, error: `HTTP ${response.status}` };
         
     } catch (error) {
         return { valid: null, error: error.message || 'Network error' };
     }
 }
 
+// Check if DOI exists via doi.org (works for all registrars: CrossRef, DataCite, etc.)
+async function checkDoiOrg(doi) {
+    try {
+        const response = await fetch(`https://doi.org/api/handles/${doi}`);
+        if (response.ok) {
+            const data = await response.json();
+            return data.responseCode === 1; // 1 = success/found
+        }
+        return false;
+    } catch {
+        return false;
+    }
+}
+
 // Extract bibliographic info for fallback search
+// Search CrossRef using raw citation text - let CrossRef do the parsing
+async function searchCrossRefRaw(rawCitation, index) {
+    try {
+        // Clean up the citation text - remove excessive whitespace, limit length
+        const cleanedCitation = rawCitation
+            .replace(/\s+/g, ' ')
+            .trim()
+            .substring(0, 300); // CrossRef handles up to ~300 chars well
+        
+        const url = `${CROSSREF_API}?query.bibliographic=${encodeURIComponent(cleanedCitation)}&rows=1&mailto=${MAILTO}`;
+        const response = await fetch(url);
+        
+        if (!response.ok) {
+            return { index, raw: rawCitation, valid: null, error: `HTTP ${response.status}` };
+        }
+        
+        const data = await response.json();
+        const items = data.message?.items || [];
+        
+        if (items.length === 0) {
+            return { 
+                index, 
+                raw: rawCitation, 
+                valid: false, 
+                error: 'No match found in CrossRef',
+                method: 'bibliographic'
+            };
+        }
+        
+        const work = items[0];
+        const score = work.score || 0;
+        
+        // CrossRef returns a relevance score - use it to gauge confidence
+        // Scores vary widely but generally >50 is decent, >100 is good
+        const authors = work.author || [];
+        const authorStr = authors.length > 0 
+            ? authors.slice(0, 3).map(a => a.family || a.name || 'Unknown').join(', ') + (authors.length > 3 ? ' et al.' : '')
+            : 'Unknown';
+        
+        return {
+            index,
+            raw: rawCitation,
+            valid: true,
+            title: work.title?.[0] || 'Unknown',
+            authors: authorStr,
+            year: String(work.published?.['date-parts']?.[0]?.[0] || work.created?.['date-parts']?.[0]?.[0] || 'Unknown'),
+            doi: work.DOI,
+            journal: work['container-title']?.[0] || work.publisher || 'Unknown',
+            method: 'bibliographic',
+            score: score
+        };
+        
+    } catch (error) {
+        return { index, raw: rawCitation, valid: null, error: error.message || 'Network error' };
+    }
+}
+
 function extractBiblio(text) {
     const biblio = {};
     
@@ -652,7 +738,7 @@ async function verifyCitations(citations) {
         const citation = citations[i];
         let result;
         
-        // Method 1: Try DOI first (most reliable)
+        // Method 1: Try DOI first (if present in citation text)
         const doi = extractDOI(citation.raw);
         if (doi) {
             progressDetail.textContent = `Verifying DOI: ${doi}`;
@@ -664,36 +750,10 @@ async function verifyCitations(citations) {
                 ...doiResult
             };
         } else {
-            // Method 2: Try title search
-            const title = extractTitle(citation.raw);
-            if (title && title.length > 15) {
-                progressDetail.textContent = `Searching title: "${title.substring(0, 40)}..."`;
-                result = await searchCrossRef(title, citation.raw, citation.index);
-                result.method = 'title';
-            }
-            
-            // Method 3: If title failed or wasn't found, try bibliographic search
-            if (!result || result.valid === false) {
-                const biblio = extractBiblio(citation.raw);
-                if (biblio) {
-                    progressDetail.textContent = `Searching by author/journal/year...`;
-                    const biblioResult = await searchCrossRefBiblio(biblio, citation.raw, citation.index);
-                    // Use biblio result if it's better than title result
-                    if (!result || (biblioResult.valid === true && result.valid !== true)) {
-                        result = biblioResult;
-                    }
-                }
-            }
-            
-            // If still no result
-            if (!result) {
-                result = {
-                    index: citation.index,
-                    raw: citation.raw,
-                    valid: null,
-                    error: 'Could not extract DOI, title, or bibliographic info'
-                };
-            }
+            // Method 2: Send raw citation text to CrossRef - let them parse it
+            // CrossRef's query.bibliographic handles author, title, year, journal all at once
+            progressDetail.textContent = `Searching: "${citation.raw.substring(0, 50)}..."`;
+            result = await searchCrossRefRaw(citation.raw, citation.index);
         }
         
         results.push(result);
