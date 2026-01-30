@@ -962,7 +962,7 @@ function renderCitation(result) {
                 </div>
                 <span class="citation-index">#${result.index}</span>
             </div>
-            <div class="citation-raw">${escapeHtml(result.raw.substring(0, 200))}${result.raw.length > 200 ? '...' : ''}</div>
+            <div class="citation-raw">${escapeHtml(result.raw)}</div>
             ${details}
         </div>
     `;
