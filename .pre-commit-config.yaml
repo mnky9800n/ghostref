@@ -1,0 +1,13 @@
+# Pre-commit hooks for CitationLint
+# Install: pip install pre-commit && pre-commit install
+
+repos:
+  - repo: local
+    hooks:
+      - id: citationlint-tests
+        name: CitationLint regression tests
+        entry: python3 -m pytest tests/test_regression.py -v --tb=short
+        language: system
+        pass_filenames: false
+        always_run: true
+        stages: [pre-push]  # Run on push, not every commit

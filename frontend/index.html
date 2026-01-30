@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CitationLint - Verify Academic Citations</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>📚 CitationLint</h1>
+            <p class="tagline">Verify academic paper citations against CrossRef</p>
+        </header>
+
+        <main>
+            <!-- Upload Section -->
+            <section id="upload-section" class="card">
+                <div id="drop-zone" class="drop-zone">
+                    <div class="drop-zone-content">
+                        <span class="drop-icon">📄</span>
+                        <p>Drag & drop your PDF here</p>
+                        <p class="drop-hint">or click to browse</p>
+                    </div>
+                    <input type="file" id="file-input" accept=".pdf" hidden>
+                </div>
+                <div id="file-info" class="file-info hidden">
+                    <span class="file-name"></span>
+                    <button id="clear-file" class="btn-icon" title="Clear">✕</button>
+                </div>
+                <button id="verify-btn" class="btn-primary" disabled>
+                    <span class="btn-text">Verify Citations</span>
+                    <span class="btn-spinner hidden"></span>
+                </button>
+            </section>
+
+            <!-- Progress Section -->
+            <section id="progress-section" class="card hidden">
+                <div class="progress-content">
+                    <div class="spinner"></div>
+                    <p id="progress-text">Uploading and analyzing PDF...</p>
+                </div>
+            </section>
+
+            <!-- Results Section -->
+            <section id="results-section" class="card hidden">
+                <div class="results-header">
+                    <h2>Verification Results</h2>
+                    <button id="new-upload" class="btn-secondary">New Upload</button>
+                </div>
+                
+                <div id="summary" class="summary">
+                    <div class="summary-item">
+                        <span class="summary-value" id="total-citations">0</span>
+                        <span class="summary-label">Citations</span>
+                    </div>
+                    <div class="summary-item">
+                        <span class="summary-value" id="dois-found">0</span>
+                        <span class="summary-label">DOIs Found</span>
+                    </div>
+                    <div class="summary-item verified">
+                        <span class="summary-value" id="verified-count">0</span>
+                        <span class="summary-label">Verified</span>
+                    </div>
+                    <div class="summary-item unverified">
+                        <span class="summary-value" id="unverified-count">0</span>
+                        <span class="summary-label">Not Found</span>
+                    </div>
+                </div>
+
+                <div class="results-filters">
+                    <button class="filter-btn active" data-filter="all">All</button>
+                    <button class="filter-btn" data-filter="verified">Verified</button>
+                    <button class="filter-btn" data-filter="unverified">Not Found</button>
+                    <button class="filter-btn" data-filter="no-doi">No DOI</button>
+                </div>
+
+                <div id="citations-list" class="citations-list">
+                    <!-- Citations populated by JS -->
+                </div>
+            </section>
+
+            <!-- Error Section -->
+            <section id="error-section" class="card error hidden">
+                <h2>⚠️ Error</h2>
+                <p id="error-message"></p>
+                <button id="error-retry" class="btn-secondary">Try Again</button>
+            </section>
+        </main>
+
+        <footer>
+            <p>CitationLint verifies DOIs against <a href="https://www.crossref.org/" target="_blank">CrossRef</a></p>
+        </footer>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>

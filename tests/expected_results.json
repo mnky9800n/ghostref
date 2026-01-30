@@ -1,0 +1,84 @@
+{
+  "A_Bayesian_spatio-temporal_model_of_COVID-19_spread_in_Engla.pdf": {
+    "doi_count": 1,
+    "page_count": 17,
+    "sample_dois": [
+      "10.1038/s41598-024-60964-0"
+    ],
+    "verified_dois": [
+      "10.1038/s41598-024-60964-0"
+    ]
+  },
+  "Examining_the_relationship_between_student_performance_and_v.pdf": {
+    "doi_count": 0,
+    "page_count": 4,
+    "sample_dois": [],
+    "verified_dois": []
+  },
+  "Integrating_numerical_computation_into_the_modeling_instruction_curriculum.pdf": {
+    "doi_count": 0,
+    "page_count": 6,
+    "sample_dois": [],
+    "verified_dois": []
+  },
+  "Methods_for_analyzing_pathways_through_a_physics_major.pdf": {
+    "doi_count": 1,
+    "page_count": 4,
+    "sample_dois": [
+      "10.1119/perc.2016.pr.002"
+    ],
+    "verified_dois": [
+      "10.1119/perc.2016.pr.002"
+    ]
+  },
+  "Predicting_time_to_graduation_at_a_large_enrollmen.pdf": {
+    "doi_count": 38,
+    "page_count": 28,
+    "sample_dois": [
+      "10.1007/s11162-016-9420-4",
+      "10.2307/2649260",
+      "10.3102/00346543045001089",
+      "10.1037/0022-0663.75.2.215",
+      "10.1353/rhe.1990.0021"
+    ],
+    "verified_dois": [
+      "10.1007/s11162-016-9420-4",
+      "10.2307/2649260",
+      "10.3102/00346543045001089",
+      "10.1037/0022-0663.75.2.215",
+      "10.1353/rhe.1990.0021",
+      "10.1080/00221546.1993.11778419",
+      "10.1023/a:1024284932709",
+      "10.1371/journal.pone.0242334",
+      "10.3102/10769986030004413"
+    ]
+  },
+  "The_initial_state_of_students_taking_an_introductory_physics.pdf": {
+    "doi_count": 0,
+    "page_count": 4,
+    "sample_dois": [],
+    "verified_dois": []
+  },
+  "attention_paper.pdf": {
+    "doi_count": 0,
+    "page_count": 15,
+    "sample_dois": [],
+    "verified_dois": []
+  },
+  "gpt4_paper.pdf": {
+    "doi_count": 4,
+    "page_count": 100,
+    "sample_dois": [
+      "10.18653/v1/p19-1472",
+      "10.18653/v1/n19-1246",
+      "10.18653/v1/2022.acl-long.229",
+      "10.1145/3287560.3287596"
+    ],
+    "verified_dois": [
+      "10.18653/v1/p19-1472",
+      "10.18653/v1/n19-1246",
+      "10.18653/v1/2022.acl-long.229",
+      "10.1145/3287560.3287596"
+    ]
+  }
+}
